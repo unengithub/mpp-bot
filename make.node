@@ -1,0 +1,145 @@
+//        /FileName/
+//        var filename = "makeMppBot"
+//        =/FileName/=
+require('dotenv').config(); // the dotenv module will just load environment variables from the .env file (and gitignore it so the world doesn't explode)
+const Client = require('mppclone-client');
+const client = new Client("wss://mppclone.com:8443", process.env.TOKEN);
+
+// since this is node, you'll also need to connect manually
+client.start();
+client.setChannel("test/awkward");
+class Command {
+    constructor(id, description, usage, minimumArguments, cb, minimumRank, visible) {
+        this.id = id;
+        this.description = description || "No description.";
+        this.usage = usage || "No usage.";
+        this.minimumArguments = minimumArguments || 0;
+        this.cb = cb;
+        this.minimumRank = minimumRank || 0;
+        this.visible = visible || true;
+    }
+    
+    static getUsage(usage, p) {
+        return `Usage: ${usage}`.split("&P").join(p);
+    }
+}
+let commands = [];
+let prefix = ".";
+
+let owners = [
+    client.getOwnParticipant()._id // own id
+];
+
+let admins = [
+
+];
+
+if (typeof globalThis.localStorage !== 'undefined') {
+    if (localStorage.owners) {
+        owners = JSON.parse(localStorage.owners);
+    }
+    if (localStorage.admins) {
+        admins = JSON.parse(localStorage.admins);
+    }
+}
+
+function getRank(id) {
+    if (owners.includes(id)) {
+        return 2;
+    } else if (admin.includes(id)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+function saveRanks() {
+    if (typeof globalThis.localStorage !== 'undefined') {
+        localStorage.owners = JSON.stringify(owners);
+        localStorage.admins = JSON.stringify(admins);
+    }
+}
+
+client.sendChat = str => {
+    client.sendArray([{
+        m: 'a',
+        message: `\u034f${str}`
+    }]);
+}
+
+client.on("a", msg => {
+    msg.args = msg.a.split(" ");
+    msg.argcat = msg.a.substring(msg.args[0].length).trim();
+    msg.cmd = msg.args[0].substring(prefix.length).trim();
+    msg.rank = getRank(msg.p._id);
+
+    if (!msg.args[0].startsWith(prefix)) return;
+
+    for (const c of commands) {
+        if (msg.cmd !== c.id) continue;
+        if (msg.args.length - 1 < c.minimumArguments) {
+            client.sendChat(`Not enough arguments. ${Command.getUsage(c.usage, prefix)}`);
+        }
+        if (msg.rank < c.minimumRank) continue;
+        try {
+            let out = c.cb(msg, client);
+            if (out) {
+                if (out !== '') {
+                    client.sendChat(out);
+                }
+            }
+        } catch (err) {
+            client.sendChat("An error has occurred.");
+        }
+    }
+});
+commands.push(new Command("help", "List all commands", `&Phelp [command]`, 0, (msg, cl) => {
+    if (!msg.args[1]) {
+      let out = "Commands:";
+      for (let c of commands) {
+          if (c.visible) {
+              if (msg.rank >= c.minimumRank) {
+                  out += ` ${prefix}${c.id} |`;
+              }
+          }
+      }
+      // fix the end
+      out = out.substring(0, out.length - 1);
+      return out;
+    } else {
+        let out = "";
+        for (let c of commands) {
+            out += `Description: ${c.description} | ${Command.getUsage(c.usage, prefix)}`;
+        }
+        return out;
+    }
+}, 0, true));
+
+commands.push(new Command("8ball", "Magic 8 ball", `&P8ball <question>`, 1, (msg, cl) => {
+    const answers = [
+        'It is certain.',
+        'It is decidedly so.',
+        'Without a doubt.',
+        'Yes definitely.',
+        'You may rely on it.',
+        'As I see it, yes.',
+        'Most likely.',
+        'Outlook good.',
+        'Yes.',
+        'Signs point to yes.',
+        'Reply hazy, try again.',
+        'Ask again later.',
+        'Better not tell you now.',
+        'Cannot predict now.',
+        'Concentrate and ask again.',
+        'Don\'t count on it.',
+        'My reply is no.',
+        'My sources say no.',
+        'Outlook not so good.',
+        'Very doubtful.'
+    ];
+    
+    const randomAnswer = answers[Math.floor(Math.random() * answers.length)];
+    return `${msg.p.name}, ${randomAnswer}`;
+}, 0, true));
+// node.js
